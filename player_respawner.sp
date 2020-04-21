@@ -8,7 +8,7 @@
 
 
 // Definitions
-#define PLUGIN_VERSION "1.1.0-dev"
+#define PLUGIN_VERSION "2.0.0-beta1"
 
 #define TEAM_T 2
 #define TEAM_CT 3
