@@ -38,7 +38,7 @@ public Plugin:myinfo =
 
 public OnPluginStart()
 {
-    CreateConVar("sm_spawn_version", PLUGIN_VERSION, "Player respawner version", FCVAR_PLUGIN|FCVAR_REPLICATED);
+    CreateConVar("sm_spawn_version", PLUGIN_VERSION, "Player respawner version", FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
 
     RegConsoleCmd("sm_spawn", Command_Spawn);
 
