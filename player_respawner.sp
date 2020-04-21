@@ -10,20 +10,18 @@
 // Definitions
 #define PLUGIN_VERSION "1.1.0-dev"
 
-#define DEF_SPAWN_LIMIT 5
-#define DEF_IMMUNE_TIME 3.0
-
 #define TEAM_T 2
 #define TEAM_CT 3
 
 
 // Globals
-new bool:g_mapHasRespawns = false;
-new Float:g_immuneTime;
-new g_spawnLimit;
+ConVar g_cvar_enabled;
+ConVar g_cvar_limit;
+ConVar g_cvar_immuneTime;
 
 new g_player_respawns[MAXPLAYERS+1];
 new bool:g_immune[MAXPLAYERS+1] = {false, ...};
+new String:g_game[40];
 
 
 // Plugin Info
@@ -38,7 +36,19 @@ public Plugin:myinfo =
 
 public OnPluginStart()
 {
-    CreateConVar("sm_spawn_version", PLUGIN_VERSION, "Player respawner version", FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+    GetGameFolderName(g_game, sizeof(g_game));
+    
+    if(!(StrEqual(g_game, "cstrike") || StrEqual(g_game, "csgo")))
+    {
+        LogError("Game %s not supported", g_game);
+        return;
+    }
+
+    CreateConVar("sm_spawn_version", PLUGIN_VERSION, "Player respawner version", FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+
+    g_cvar_enabled = CreateConVar("sm_spawn_enabled", "1", "Enables or disables respawning", FCVAR_REPLICATED|FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    g_cvar_limit = CreateConVar("sm_spawn_limit", "0", "Number of respawn allowed. 0 = infinate", FCVAR_REPLICATED|FCVAR_NOTIFY, true, 0.0);
+    g_cvar_immuneTime = CreateConVar("sm_spawn_immunetime", "3.0", "Time (in seconds) the player is immune for after spawning", FCVAR_REPLICATED|FCVAR_NOTIFY, true, 0.0);
 
     RegConsoleCmd("sm_spawn", Command_Spawn);
 
@@ -63,66 +73,19 @@ public OnClientPutInServer(client)
 
 public Action:OnRoundStart(Handle:event, String:name[], bool:dontBroadcast)
 {
-    if(g_mapHasRespawns)
+    if(g_cvar_enabled.BoolValue)
     {
-        if(g_spawnLimit < 1)
+        if(g_cvar_limit.IntValue < 1)
         {
             PrintToChatAll("There is no spawn limit for this map!");
         }
         else
         {
-            PrintToChatAll("You have %d respawns for this map", g_spawnLimit);
+            PrintToChatAll("You have %d respawns for this map", g_cvar_limit.IntValue);
         }
 
         PrintToChatAll("Type !spawn to respawn");
     }
-}
-
-public OnMapStart()
-{
-    new String:map[128];
-    new String:path[PLATFORM_MAX_PATH];
-
-    //Set some defaults
-    g_immuneTime = DEF_IMMUNE_TIME;
-
-    new Handle:kv = CreateKeyValues("MapList");
-
-    BuildPath(Path_SM, path, sizeof(path), "configs/respawn_maplist.txt");
-    FileToKeyValues(kv, path);
-
-    GetCurrentMap(map, sizeof(map));
-
-    if (!KvJumpToKey(kv, map))
-    {
-        g_mapHasRespawns = false;
-
-        CloseHandle(kv);
-        return;
-    }
-
-    g_mapHasRespawns = true;
-
-    if(KvGetNum(kv, "spawnlimit") >= 0)
-    {
-        g_spawnLimit = KvGetNum(kv, "spawnlimit", DEF_SPAWN_LIMIT);
-    }
-    else
-    {
-        PrintToServer("Spawn Limit cannot be negative");
-    }
-
-    if(KvGetFloat(kv, "immunetime") >= 0)
-    {
-        g_immuneTime = KvGetFloat(kv, "immunetime", DEF_IMMUNE_TIME);
-    }
-    else
-    {
-        PrintToServer("Immune Time cannot be negative");
-    }
-
-    CloseHandle(kv);
-    return;
 }
 
 public Action:OnRoundEnd(Handle:event, String:name[], bool:dontBroadcast)
@@ -138,9 +101,7 @@ public OnMapEnd()
 public Action:OnTakeDamage(client, &attacker, &inflictor, &Float:damage, &damagetype)
 {
     if(g_immune[client])
-    {
         return Plugin_Handled;
-    }
 
     return Plugin_Continue;
 }
@@ -263,14 +224,22 @@ public Action:Command_Say(client, const String:command[], args)
     return Plugin_Continue;
 }
 
-public RespawnPlayer(client)
+public RespawnPlayer(target)
 {
-    CS_RespawnPlayer(client);
+    if(StrEqual(g_game, "cstrike") || StrEqual(g_game, "csgo"))
+    {
+        CS_RespawnPlayer(target);
+    }
 
-    g_immune[client] = true;
-    CreateTimer(g_immuneTime, Timer_Immune, client);
+    g_immune[target] = true;
+    CreateTimer(g_cvar_immuneTime.FloatValue, Timer_Immune, target);
 
-    PrintToChat(client, "(%d/%d) You have been respawned with %-.1f seconds immunity", g_player_respawns[client], g_spawnLimit, g_immuneTime);
+    PrintToChat(
+        target, 
+        "(%d/%d) You have been respawned with %-.1f seconds immunity", 
+        g_player_respawns[target], 
+        g_cvar_limit.IntValue, 
+        g_cvar_immuneTime.FloatValue);
 }
 
 public RespawnSelf(client)
@@ -278,7 +247,7 @@ public RespawnSelf(client)
     new timeleft;
 
     //Does this map have respawns?
-    if(!g_mapHasRespawns)
+    if(!g_cvar_enabled.BoolValue)
     {
         PrintToChat(client, "You cannot respawn on this map");
 
@@ -309,7 +278,7 @@ public RespawnSelf(client)
     }
 
     //Does the play have any respawns left?
-    if(g_player_respawns[client] >= g_spawnLimit && g_spawnLimit > 0)
+    if(g_player_respawns[client] >= g_cvar_limit.IntValue && g_cvar_limit.IntValue > 0)
     {
         PrintToChat(client, "You have reached your spawn limit (%d)", g_player_respawns[client]);
 
